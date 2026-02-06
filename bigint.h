@@ -224,15 +224,6 @@ void list_free(List *l) {
 }
 
 
-// library functions
-/**
- * add 
- * sub
- * mult
- * div
- * exp
- */
-
 #undef X
 #define BGI_STATUS_LIST(X) \
     X(BGI_OK, "bigint is ok") \
@@ -264,6 +255,7 @@ int bgi_cmp(BigInt *bi1, BigInt *bi2);
 int bgi_abs_cmp(BigInt *bi1, BigInt *bi2);
 BigInt *bgi_add(BigInt *bi1, BigInt *bi2);
 BigInt *bgi_sub(BigInt *bi1, BigInt *bi2);
+BigInt *bgi_mult(BigInt *bi1, BigInt *bi2);
 void bgi_free(BigInt *bi);
 
 const char* bgi_get_status_msg(BigInt *bi) {
@@ -451,29 +443,27 @@ const char *bgi_get_text(BigInt *bi) {
     size_t length = 0;
 
     if (list_len(bi->numeric) == 0 && list_len(bi->decimal) == 0) {
-        length++;
+        length++; // '0'
     }
 
     if (list_len(bi->numeric) > 0 && list_len(bi->decimal) == 0) {
-        length += 1 + list_len(bi->numeric);
+        length += 1 + list_len(bi->numeric); // ex: +23, -23
     }
 
     if (list_len(bi->numeric) == 0 && list_len(bi->decimal) > 0) {
-        length += 3 + list_len(bi->numeric);
+        length += 3 + list_len(bi->numeric); // ex: +0.23, -0.23
     }
 
     if (list_len(bi->numeric) > 0 && list_len(bi->decimal) > 0) {
-        length += 2 + list_len(bi->numeric) + list_len(bi->decimal);
+        length += 2 + list_len(bi->numeric) + list_len(bi->decimal);  // ex: +23.23, -23.23
     }
 
-    length++;
+    length++; // for last null terminator for the string
 
-    char *text = (char*)malloc(sizeof(char) * length);
+    char *text = (char*)calloc(length, sizeof(char));
     if (text == NULL) {
         return NULL;
     }
-
-    text[length-1] = '\0';
 
     if (list_len(bi->numeric) == 0 && list_len(bi->decimal) == 0) {
         text[0] = '0';
@@ -886,7 +876,7 @@ BigInt *bgi_add(BigInt *bi1, BigInt *bi2) {
             bgi_free(bi2_copy);
             return bi1_copy;
         }
-        carrier = (n1 + n2) / 10;
+        carrier = (n1 + n2 + carrier) / 10;
     }
 
     if (carrier > 0) {
@@ -1320,6 +1310,324 @@ BigInt *bgi_sub(BigInt *bi1, BigInt *bi2) {
     bgi_free(bi1_copy);
     bgi_free(bi2_copy);
 
+    return bi3;
+}
+
+BigInt *bgi_mult(BigInt *bi1, BigInt *bi2) {
+    bgi_assert(bi1 != NULL, "bi1 cannot be NULL");
+    bgi_assert(bi1->numeric != NULL, "bi1->numeric cannot be NULL");
+    bgi_assert(bi1->decimal != NULL, "bi1->decimal cannot be NULL");
+
+    if (bi1 == NULL || bi1->numeric == NULL || bi1->decimal == NULL) {
+        return NULL;
+    }
+
+    if (bi1->status_code != BGI_OK || bi1->status_code != LIST_OK || bi1->status_code != LIST_OK) {
+        return NULL;
+    }
+
+    bgi_assert(bi2 != NULL, "bi2 cannot be NULL");
+    bgi_assert(bi2->numeric != NULL, "bi2->numeric cannot be NULL");
+    bgi_assert(bi2->decimal != NULL, "bi2->decimal cannot be NULL");
+
+    if (bi2 == NULL || bi2->numeric == NULL || bi2->decimal == NULL) {
+        return NULL;
+    }
+
+    if (bi2->status_code != BGI_OK || bi2->status_code != LIST_OK || bi2->status_code != LIST_OK) {
+        return NULL;
+    }
+
+    // handle the multipication by zero
+    BigInt *zero = bgi_init("0"); 
+    if (zero == NULL) {
+        return NULL;
+    }
+
+    if (zero->status_code != BGI_OK) {
+        return zero;
+    }
+
+    int cmp1 = bgi_cmp(zero, bi1);
+    if (bi1->status_code != BGI_OK) {
+        return bi1;
+    }
+    if (zero->status_code != BGI_OK) {
+        return zero;
+    }
+
+    int cmp2 = bgi_cmp(zero, bi2);
+    if (bi2->status_code != BGI_OK) {
+        return bi2;
+    }
+    if (zero->status_code != BGI_OK) {
+        return zero;
+    }
+
+    if (cmp1 == 0 || cmp2 == 0) {
+        return zero;
+    }
+
+    bgi_free(zero);
+
+    // handle non zero multipication
+    size_t decimal_points = list_len(bi1->decimal) + list_len(bi2->decimal);
+
+    BigInt *bi1_copy = bgi_init("0");
+    if (bi1_copy == NULL) {
+        return NULL;
+    }
+
+    if (bi1_copy->status_code != BGI_OK) {
+        return bi1_copy;
+    }
+
+    bi1_copy->sign    = bi1->sign;
+    bi1_copy->numeric = list_clone(bi1->numeric);
+
+    if (bi1_copy->numeric == NULL || bi1_copy->numeric->status_code != LIST_OK) {
+        bi1_copy->status_code = BGI_NUMERIC_FAIL;
+        return bi1_copy;
+    }
+
+    for (size_t i = 0; i < list_len(bi1->decimal); i++) {
+        int8 value = list_get(bi1->decimal, i);
+        if (bi1->decimal->status_code != LIST_OK) {
+            return NULL;
+        }
+        list_append(bi1_copy->numeric, value);
+        if (bi1_copy->numeric->status_code != LIST_OK) {
+            bi1_copy->status_code = BGI_NUMERIC_FAIL;
+            return bi1_copy;
+        }
+    }
+
+    BigInt *result = bgi_init("0");
+    if (result == NULL) {
+        return NULL;
+    }
+    if (result->status_code != BGI_OK) {
+        bgi_free(bi1_copy);
+        return result;
+    }
+
+    List *lists[2] = {bi2->decimal, bi2->numeric};
+    int8 carrier = 0;
+    for (size_t li = 0; li < 2; li++) {
+        for (size_t i = 0; i < list_len(lists[li]); i++) {
+            BigInt *temp = bgi_clone(bi1_copy);
+            if (temp == NULL) {
+                bgi_free(bi1_copy);
+                return NULL;
+            }
+            if (temp->status_code != BGI_OK) {
+                bgi_free(bi1_copy);
+                bgi_free(result);
+                return temp;
+            }
+            list_reverse(temp->numeric);
+            if  (temp->numeric->status_code != LIST_OK) {
+                temp->status_code = BGI_NUMERIC_FAIL;
+                bgi_free(bi1_copy);
+                bgi_free(result);
+                return temp;
+            }
+            int8 multiplier = list_get(lists[li], list_len(lists[li])-i-1);
+            if (bi2->decimal->status_code != LIST_OK) {
+                bgi_free(bi1_copy);
+                bgi_free(temp);
+                bgi_free(result);
+                return NULL;
+            }
+
+            for (size_t j = 0; j < list_len(temp->numeric); j++) {
+                int8 n1 = list_get(temp->numeric, j);
+                if (temp->numeric->status_code != LIST_OK) {
+                    temp->status_code = BGI_NUMERIC_FAIL;
+                    bgi_free(bi1_copy);
+                    bgi_free(result);
+                    return temp;
+                }
+
+                int8 value = carrier + (n1 * multiplier);
+                carrier = value/10;
+
+                list_set(temp->numeric, j, value%10);
+                if (temp->numeric->status_code != LIST_OK) {
+                    temp->status_code = BGI_NUMERIC_FAIL;
+                    bgi_free(bi1_copy);
+                    bgi_free(result);
+                    return temp;
+                }
+            }
+            if (carrier != 0) {
+                list_append(temp->numeric, carrier);
+                if (temp->numeric->status_code != LIST_OK) {
+                    temp->status_code = BGI_NUMERIC_FAIL;
+                    bgi_free(result);
+                    bgi_free(bi1_copy);
+                    return temp;
+                }
+                carrier = 0;
+            }
+
+            list_reverse(temp->numeric);
+            if (temp->numeric->status_code != LIST_OK) {
+                bgi_free(bi1_copy);
+                bgi_free(result);
+                return temp;
+            }
+
+            size_t limit = i;
+            if (li == 1 && list_len(bi2->decimal) > 0) {
+                limit = i + list_len(bi2->decimal);
+            }
+            for (size_t j = 0; j < limit; j++) {
+                list_append(temp->numeric, 0);
+                if (temp->numeric->status_code != LIST_OK) {
+                    bgi_free(bi1_copy);
+                    bgi_free(result);
+                    return temp;
+                }
+            }
+
+            BigInt* new_result = bgi_add(result, temp);
+            if (new_result == NULL) {
+                bgi_free(bi1_copy);
+                bgi_free(result);
+                bgi_free(temp);
+                return NULL;
+            }
+
+            bgi_free(result);
+            bgi_free(temp);
+            result = new_result;
+        }
+    }
+
+    // set correct numeric and decimal values 
+    BigInt *bi3 = bgi_init("0");
+    if (bi3 == NULL) {
+        bgi_free(bi1_copy);
+        bgi_free(result);
+        return NULL;
+    }
+
+    if (bi3->status_code != BGI_OK) {
+        bgi_free(bi1_copy);
+        bgi_free(result);
+        return bi3;
+    }
+
+    // set numeric digits
+    if (list_len(result->numeric) >= decimal_points) {
+        for (size_t i = 0; i < list_len(result->numeric) - decimal_points; i++) {
+            int8 value = list_get(result->numeric, i);
+            if (result->numeric->status_code != LIST_OK) {
+                result->status_code = BGI_NUMERIC_FAIL;
+                bgi_free(bi3);
+                bgi_free(bi1_copy);
+                return result;
+            }
+            list_append(bi3->numeric, value);
+            if (bi3->numeric->status_code != LIST_OK) {
+                bi3->status_code = BGI_NUMERIC_FAIL;
+                bgi_free(result);
+                bgi_free(bi1_copy);
+                return bi3;
+            }
+        }
+
+        // set decimal digits
+        for (size_t i = list_len(result->numeric) - decimal_points; i < list_len(result->numeric); i++) {
+            int8 value = list_get(result->numeric, i);
+            if (result->numeric->status_code != LIST_OK) {
+                result->status_code = BGI_NUMERIC_FAIL;
+                bgi_free(bi3);
+                bgi_free(bi1_copy);
+                return result;
+            }
+            list_append(bi3->decimal, value);
+            if (bi3->numeric->status_code != LIST_OK) {
+                bi3->status_code = BGI_DECIMAL_FAIL;
+                bgi_free(result);
+                bgi_free(bi1_copy);
+                return bi3;
+            }
+        }
+
+        // remove unnecessary zeros from end of the decimal digits
+        int first_non_zero_index = -1;
+        for (int i = list_len(bi3->decimal)-1; i >= 0; i--) {
+            int8 value = list_get(bi3->decimal, i);
+            if (bi3->decimal->status_code != LIST_OK) {
+                bi3->status_code = BGI_DECIMAL_FAIL;
+                bgi_free(result);
+                bgi_free(bi1_copy);
+                return bi3;
+            }
+            if (value != 0) {
+                first_non_zero_index = i;
+                break;
+            }
+        }
+
+        if (first_non_zero_index != -1) {
+            bi3->decimal->index = first_non_zero_index+1;
+        } else {
+            free(bi3->decimal);
+            bi3->decimal = list_init();
+            if (bi3->decimal == NULL) {
+                bgi_free(result);
+                bgi_free(bi1_copy);
+                bgi_free(bi3);
+                return NULL;
+            }
+
+            if (bi3->decimal->status_code != LIST_OK) {
+                bi3->status_code = BGI_DECIMAL_FAIL;
+                bgi_free(bi1_copy);
+                bgi_free(result);
+                return bi3;
+            }
+        }
+    } else {
+        for (size_t i = 0; i < decimal_points-list_len(result->numeric); i++) {
+            list_append(bi3->decimal, 0);
+            if (bi3->decimal->status_code != LIST_OK) {
+                bi3->status_code = BGI_DECIMAL_FAIL;
+                bgi_free(result);
+                bgi_free(bi1_copy);
+                return bi3;
+            }
+        }
+
+        for (size_t i = 0; i < list_len(result->numeric); i++) {
+            int8 value = list_get(result->numeric, i);
+            if (result->numeric->status_code != LIST_OK) {
+                result->status_code = BGI_NUMERIC_FAIL;
+                bgi_free(bi1_copy);
+                bgi_free(bi3);
+                return result;
+            }
+            list_append(bi3->decimal, value);
+            if (bi3->decimal->status_code != LIST_OK) {
+                bi3->status_code = BGI_DECIMAL_FAIL;
+                bgi_free(result);
+                bgi_free(bi1_copy);
+                return bi3;
+            }
+        }
+    }
+
+    // set the sign
+    bi3->sign = true;
+    if (bi1->sign != bi2->sign) {
+        bi3->sign = false;
+    }
+
+    bgi_free(result);
+    bgi_free(bi1_copy);
     return bi3;
 }
 
