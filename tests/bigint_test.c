@@ -4,7 +4,7 @@
 #include "../bigint.h"
 
 void bgi_init_and_bgi_free_test() {
-    char msg[200];
+    char msg[200] = {0};
 
     typedef struct {
         bool sign;
@@ -50,6 +50,7 @@ void bgi_init_and_bgi_free_test() {
         }
 
         bgi_free(bi);
+
         printf("TESTCASE (%zu) PASSED...\n", i);
     }
 
@@ -65,7 +66,8 @@ void bgi_cmp_test() {
         int expect;
     } Testcase;
 
-    char msg[200];
+    char msg[200] = {0};
+
     Testcase testcases[] = {
         {
             .text1="+1.000000",
@@ -143,6 +145,9 @@ void bgi_cmp_test() {
         sprintf(msg, "TESTCASE FAIL: index: %zu: values should be equal: expect: %d, real: %d", i, tc.expect, val);
         bgi_assert(val == tc.expect, msg);
 
+        bgi_free(bi1);
+        bgi_free(bi2);
+
         printf("TESTCASE (%zu) PASSED...\n", i);
     }
 
@@ -158,7 +163,8 @@ void bgi_abs_cmp_test() {
         int expect;
     } Testcase;
 
-    char msg[200];
+    char msg[200] = {0};
+
     Testcase testcases[] = {
         {
             .text1="+1.000000",
@@ -246,6 +252,9 @@ void bgi_abs_cmp_test() {
         sprintf(msg, "TESTCASE FAIL: index: %zu: values should be equal: expect: %d, real: %d", i, tc.expect, val);
         bgi_assert(val == tc.expect, msg);
 
+        bgi_free(bi1);
+        bgi_free(bi2);
+
         printf("TESTCASE (%zu) PASSED...\n", i);
     }
 
@@ -264,12 +273,14 @@ void bgi_add_test() {
     } Testcase;
 
     Testcase testcases[] = {
+        (Testcase){.n1="0"           , .n2="+2000"           , .expect="+2000"},
         (Testcase){.n1="+1000"       , .n2="+2000"           , .expect="+3000"},
         (Testcase){.n1="+10"         , .n2="+2000"           , .expect="+2010"},
         (Testcase){.n1="+200"        , .n2="+2000.234"       , .expect="+2200.234"},
         (Testcase){.n1="-200"        , .n2="+2000.234"       , .expect="+1800.234"},
         (Testcase){.n1="-200.34"     , .n2="-2000.234"       , .expect="-2200.574"},
         (Testcase){.n1="-23423.25252", .n2="6893245459.99999", .expect="6893222036.74747"},
+        (Testcase){.n1="20927268"    , .n2="209272680"       , .expect="230199948"},
         (Testcase){
             .n1    ="6893245459.999998080234234234234234",
             .n2    ="23423.252520000000000000000000",
@@ -312,6 +323,11 @@ void bgi_add_test() {
 
         sprintf(msg, "TESTCASE FAIL: n1 %s: n2 %s: expect %s: real %s: cmp %d", tc.n1, tc.n2, tc.expect, bgi_get_text(result), val);
         bgi_assert(val == 0, msg);
+
+        bgi_free(bi1);
+        bgi_free(bi2);
+        bgi_free(expect);
+        bgi_free(result);
 
         printf("TESTCASES (%zu) PASSED...\n", i);
     }
@@ -385,10 +401,98 @@ void bgi_sub_test() {
         sprintf(msg, "TESTCASE FAIL: n1 %s: n2 %s: expect %s: real %s: cmp %d", tc.n1, tc.n2, tc.expect, bgi_get_text(result), val);
         bgi_assert(val == 0, msg);
 
+        bgi_free(bi1);
+        bgi_free(bi2);
+        bgi_free(expect);
+        bgi_free(result);
+
         printf("TESTCASES (%zu) PASSED...\n", i);
     }
 
     printf("(TESTING) bgi_sub_test (COMPLETED)\n\n");
+}
+
+void bgi_mult_test() {
+    printf("(TESTING) bgi_mult_test (STARTED)\n");
+
+    char msg[200] = {0};
+
+    typedef struct {
+        const char *n1;
+        const char *n2;
+        const char *expect;
+    } Testcase;
+
+    Testcase testcases[] = {
+        (Testcase){.n1="0.25"      , .n2="0.25"       , .expect="0.0625"},
+        (Testcase){.n1="1"         , .n2="2"          , .expect="2"},
+        (Testcase){.n1="-1"        , .n2="2"          , .expect="-2"},
+        (Testcase){.n1="1"         , .n2="-2"         , .expect="-2"},
+        (Testcase){.n1="-1"        , .n2="-2"         , .expect="+2"},
+        (Testcase){.n1="-1"        , .n2="-2"         , .expect="+2"},
+        (Testcase){.n1="1234.234"  , .n2="2342349.24" , .expect="2891007071.88216"},
+        (Testcase){.n1="-1234.234" , .n2="2342349.24" , .expect="-2891007071.88216"},
+        (Testcase){.n1="1234.234"  , .n2="-2342349.24", .expect="-2891007071.88216"},
+        (Testcase){.n1="-1234.234" , .n2="-2342349.24", .expect="2891007071.88216"},
+        (Testcase){.n1="0.25"      , .n2="1"          , .expect="0.25"},
+        (Testcase){.n1="-0.25"     , .n2="4"          , .expect="-1"},
+        (Testcase){.n1="0.25"      , .n2="-4"         , .expect="-1"},
+        (Testcase){.n1="-0.25"     , .n2="-4"         , .expect="1"},
+        (Testcase){.n1="0.25"      , .n2="4"          , .expect="1"},
+        (Testcase){.n1="-0.25"     , .n2="0.25"       , .expect="-0.0625"},
+        (Testcase){.n1="0.25"      , .n2="-0.25"      , .expect="-0.0625"},
+        (Testcase){.n1="-0.25"     , .n2="-0.25"      , .expect="0.0625"},
+        (Testcase){.n1="0.000125"  , .n2="0.0625"     , .expect="0.0000078125"},
+        (Testcase){.n1="-0.000125" , .n2="0.0625"     , .expect="-0.0000078125"},
+        (Testcase){.n1="0.000125"  , .n2="-0.0625"    , .expect="-0.0000078125"},
+        (Testcase){.n1="-0.000125" , .n2="-0.0625"    , .expect="0.0000078125"},
+    };
+
+    for (size_t i = 0; i < sizeof(testcases)/sizeof(Testcase); i++) {
+        Testcase tc = testcases[i];
+
+        BigInt *bi1 = bgi_init(tc.n1);
+        sprintf(msg, "TESTCASE FAIL: index %zu: bi1 cannot be NULL", i);
+        bgi_assert(bi1 != NULL, msg);
+        sprintf(msg, "TESTCASE FAIL: index %zu: %s", i, bgi_get_status_msg(bi1));
+        bgi_assert(bi1->status_code == BGI_OK, msg);
+
+        BigInt *bi2 = bgi_init(tc.n2);
+        sprintf(msg, "TESTCASE FAIL: index %zu: bi2 cannot be NULL", i);
+        bgi_assert(bi2 != NULL, msg);
+        sprintf(msg, "TESTCASE FAIL: index %zu: %s", i, bgi_get_status_msg(bi2));
+        bgi_assert(bi2->status_code == BGI_OK, msg);
+
+        BigInt *expect = bgi_init(tc.expect);
+        sprintf(msg, "TESTCASE FAIL: index %zu: 'expect' cannot be NULL", i);
+        bgi_assert(expect != NULL, msg);
+        sprintf(msg, "TESTCASE FAIL: index %zu: %s", i, bgi_get_status_msg(expect));
+        bgi_assert(expect->status_code == BGI_OK, msg);
+
+        BigInt *result = bgi_mult(bi1, bi2);
+        sprintf(msg, "TESTCASE FAIL: index %zu: result cannot be NULL", i);
+        bgi_assert(result != NULL, msg);
+        sprintf(msg, "TESTCASE FAIL: index %zu: %s", i, bgi_get_status_msg(result));
+        bgi_assert(result->status_code == BGI_OK, msg);
+
+        int val = bgi_cmp(expect, result);
+        sprintf(msg, "TESTCASE FAIL: index %zu: %s", i, bgi_get_status_msg(expect));
+        bgi_assert(expect->status_code == BGI_OK, msg);
+        sprintf(msg, "TESTCASE FAIL: index %zu: %s", i, bgi_get_status_msg(result));
+        bgi_assert(expect->status_code == BGI_OK, msg);
+
+        sprintf(msg, "TESTCASE FAIL: n1 %s: n2 %s: expect %s: real %s: cmp %d", tc.n1, tc.n2, tc.expect, bgi_get_text(result), val);
+        bgi_assert(val == 0, msg);
+
+        bgi_free(bi1);
+        bgi_free(bi2);
+        bgi_free(expect);
+        bgi_free(result);
+
+        printf("TESTCASES (%zu) PASSED...\n", i);
+    }
+
+    printf("(TESTING) bgi_mult_test (COMPLETED)\n");
 }
 
 int main(void) {
@@ -397,4 +501,6 @@ int main(void) {
     bgi_abs_cmp_test();
     bgi_add_test();
     bgi_sub_test();
+    bgi_mult_test();
+    return 0;
 }
